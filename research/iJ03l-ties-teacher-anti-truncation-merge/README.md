@@ -55,6 +55,7 @@ Compute: Local CPU execution for tensor SVD and interpolation; zero rented compu
 - **Submission `2d11f583`:** Established public validation record at **45.43%** (vs Rank 1's 44.51%), with HumanEval reaching 37.5% and IFEval reaching 79.7%.
 - **Submission `b2a71496`:** Confirmed that unscaled input embeddings preserve math/logic fidelity, advancing GSM8K to **68.75%** and IFEval to **81.25%**.
 - **Submission `9030885e` (Version `7c2363b2`):** Validated linear mode connectivity merge, cutting truncation to 13.6% and advancing private test score to **49.20%**.
+- **Submission `28739667` (Version `ed536971`):** **Task-Vector SVD Rank Compression ($r=16, \beta=0.40$)** leaped **+1.0%** on private test to **50.20%** (Rank 4 overall) and **44.56%** on public validation (outperforming the #1–#4 validation baselines), with HumanEval reaching **40.63%**, BBH **38.89%**, and truncation reduced to **13.8%**.
 
 ## Boundaries
 
