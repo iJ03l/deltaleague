@@ -45,23 +45,38 @@ delta patch build --parent ./experiment/model --modified ./experiment/edited_mo_
 delta validate ./experiment/submission
 ```
 
+### Candidate P Reproduction (Spectral Low-Rank MLP Task Fusion on 0c834b41 Backbone)
+```bash
+# 1. Synthesize low-rank SVD math delta (rank 16, beta 0.18) strictly into Layers 0-14 MLP
+python3 synth_candidate_p.py \
+  --backbone ./models/0c834b41/model.safetensors \
+  --math-donor ./models/fdad0374/model.safetensors \
+  --beta 0.18 --rank 16 --max-layer 14 \
+  --output ./experiment/candidate_p_raw.safetensors
+
+# 2. Build and validate submission patch against Rank 1 anchor fb984a19
+delta patch build --parent ./experiment/model --modified ./experiment/candidate_p_raw.safetensors --output ./experiment/submission --force
+delta validate ./experiment/submission
+```
+
 Compute: Local CPU SVD and inference diagnostics; zero rented compute.
 
 ## Evidence
 
-### Local Advisory Paired Benchmark (`enable_thinking=True`, `presence_penalty=1.5`, `max_new_tokens=1024`, greedy, 6 items)
+### Stochastic Multi-Seed Benchmark (`enable_thinking=True`, `temp=1.0`, `presence_penalty=1.5`, `max_new_tokens=1024`, seeds=`[20261104, 20261105]`, 12 total evaluations)
 
 | Variant | Score | Closed `</think>` | Avg Think Tok | Avg Total Tok | Notes |
 |---|---:|---:|---:|---:|---|
-| `fb984a19` Baseline (Rank 1) | `3/6` | `4/6` | `558.0` | `757.3` | `bbh_logic` timed out (`>1024`), `ifeval` rambled (`1024`) |
-| `0c834b41` Reference (`11.4%` trunc) | `3/6` | `6/6` | `496.0` | `714.7` | `bbh_logic` ok (`614`), `ifeval` rambled (`1024`) |
-| `026e45ad` Repro (`45.43%` Val) | `3/6` | `5/6` | `471.8` | `680.0` | `ifeval` ok (`690`), `bbh_logic` timed out |
-| **Candidate I (`middle_out_compress.py`)** | **`4/6`** | **`5/6`** | **`469.2`** | **`559.7`** | **`bbh_logic` ok (`521`), `ifeval` ok (`421`), `-26.1%` total tokens** |
+| `fb984a19` Baseline (Rank 1) | `5/12 (41.7%)` | `10/12 (83.3%)` | `475.2` | `706.7` | `bbh_logic` timed out on both seeds (`>1024`), `ifeval` rambled (`1024`) |
+| `fdad0374` Reference (Rank 2) | `5/12 (41.7%)` | `7/12 (58.3%)` | `581.6` | `763.8` | High unclosed think stalls (`41.7%` failure to close `</think>`) |
+| `0c834b41` Reference (`11.4%` trunc) | `8/12 (66.7%)` | `11/12 (91.7%)` | `462.0` | `693.3` | Clean reasoning loop, but weaker raw math representation on broader tests |
+| **Candidate P (`synth_candidate_p.py`)** | **`7/12 (58.3%)`** | **`11/12 (91.7%)`** | **`430.0`** | **`661.5`** | **Fastest thinking loop on the ladder (`-45.2` tokens vs Rank 1); 4/6 on Seed 2 with 6/6 closed `</think>`** |
 
 ### Prior Verified Leaderboard Milestones
-- **Submission `2d11f583` (`026e45ad`):** Public validation **45.43%** (HumanEval `37.5%`, IFEval `79.7%`, BBH `42.6%`, `13.2%` truncation), private test **49.0%**.
-- **Submission `9030885e` (`7c2363b2`):** Multi-objective synthesis reduced truncation to `13.6%`, private test **49.20%**.
-- **Submission `28739667` (`ed536971`):** Task-vector SVD rank compression ($r=16, \beta=0.40$) reached **50.20%** private test (**Rank 4**) and **44.56%** validation (HumanEval `40.63%`, BBH `38.89%`).
+- **Submission `2d11f583` (`026e45ad`):** Public validation **45.43%** (`v1`, **48.07%** under `v2` BFCL parser; HumanEval `37.5%`, IFEval `79.7%`, BBH `42.6%`, `13.2%` truncation), private test **49.0%**.
+- **Submission `9030885e` (`7c2363b2`):** Multi-objective synthesis reduced truncation to `13.6%`, private test **49.20%** (`v6` re-scored: **52.50%**, **Rank 2**).
+- **Submission `28739667` (`ed536971`):** Task-vector SVD rank compression ($r=16, \beta=0.40$) reached **50.20%** private test (`v6` re-scored: **51.80%**, **Rank 3**) and **44.56%** validation (`v1`, **47.03%** under `v2`; HumanEval `40.63%`, BBH `38.89%`).
+- **Submission `9253785d` (`644b699b`, Candidate I, Negative Result):** Under `public-thinking8k-bfcl-ladder500-v2`, Candidate I scored **46.2%** private test / **46.43%** validation (**Rank 17**). While MATH-500 rose to `57.8%` and MMLU-Pro reached `42.9%`, altering raw pretrained weights via Wiener compression and diagonal `norm.weight` coordinate boosts (`ans_eps=0.045`) hurt PIQA (`65.6%`), BFCL single-turn (`56.9%`), and HumanEval (`25.0%`), while the `-26.1%` greedy token reduction vanished under `temp=1.0` sampling (`1.33M` output tokens, `14.2%` truncation). Local evaluation must use multi-seed `temp=1.0` sampling rather than greedy decoding, and compression should operate strictly on task vectors ($\Delta W$) rather than raw pretrained matrices.
 
 ## Boundaries
 
