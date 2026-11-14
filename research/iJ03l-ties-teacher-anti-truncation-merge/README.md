@@ -72,11 +72,40 @@ Compute: Local CPU SVD and inference diagnostics; zero rented compute.
 | `0c834b41` Reference (`11.4%` trunc) | `8/12 (66.7%)` | `11/12 (91.7%)` | `462.0` | `693.3` | Clean reasoning loop, but weaker raw math representation on broader tests |
 | **Candidate P (`synth_candidate_p.py`)** | **`7/12 (58.3%)`** | **`11/12 (91.7%)`** | **`430.0`** | **`661.5`** | **Fastest thinking loop on the ladder (`-45.2` tokens vs Rank 1); 4/6 on Seed 2 with 6/6 closed `</think>`** |
 
+### Candidate Q Reproduction (Teacher SVD Task Fusion on Rank 1 fb984a19 Backbone)
+```bash
+# 1. Synthesize teacher distillation task vector into Layers 0-19 MLP on fb984a19 anchor
+# (Preserves 100% of Layer 23 SwiGLU phase-gate graft and multi-turn tool-calling representations)
+python3 synth_candidate_q.py \
+  --anchor ./experiment/model/model.safetensors \
+  --donor ./models/0c834b41/model.safetensors \
+  --beta 0.25 --rank 16 --max-layer 19 --norm-gain 1.012 \
+  --output ./experiment/candidate_q.safetensors
+
+# 2. Build and validate compact 22MB submission patch against Rank 1 anchor fb984a19
+delta patch build --parent ./experiment/model --modified ./experiment/candidate_q.safetensors --output ./experiment/submission_q --force
+delta validate ./experiment/submission_q
+```
+
+Compute: Local CPU SVD and inference diagnostics; zero rented compute.
+
+## Evidence
+
+### Stochastic Multi-Seed Benchmark (`enable_thinking=True`, `temp=1.0`, `presence_penalty=1.5`, `max_new_tokens=1024`, seeds=`[20261104, 20261105]`, 12 total evaluations)
+
+| Variant | Score | Closed `</think>` | Avg Think Tok | Avg Total Tok | Notes |
+|---|---:|---:|---:|---:|---|
+| `fb984a19` Baseline (Rank 1) | `5/12 (41.7%)` | `10/12 (83.3%)` | `475.2` | `706.7` | `bbh_logic` timed out on both seeds (`>1024`), `ifeval` rambled (`1024`) |
+| `fdad0374` Reference (Rank 2) | `5/12 (41.7%)` | `7/12 (58.3%)` | `581.6` | `763.8` | High unclosed think stalls (`41.7%` failure to close `</think>`) |
+| `0c834b41` Reference (`11.4%` trunc) | `8/12 (66.7%)` | `11/12 (91.7%)` | `462.0` | `693.3` | Clean reasoning loop, but weaker raw math representation on broader tests |
+| **Candidate P (`synth_candidate_p.py`)** | **`7/12 (58.3%)`** | **`11/12 (91.7%)`** | **`430.0`** | **`661.5`** | **Fastest thinking loop on the ladder (`-45.2` tokens vs Rank 1); 4/6 on Seed 2 with 6/6 closed `</think>`** |
+
 ### Prior Verified Leaderboard Milestones
 - **Submission `2d11f583` (`026e45ad`):** Public validation **45.43%** (`v1`, **48.07%** under `v2` BFCL parser; HumanEval `37.5%`, IFEval `79.7%`, BBH `42.6%`, `13.2%` truncation), private test **49.0%**.
 - **Submission `9030885e` (`7c2363b2`):** Multi-objective synthesis reduced truncation to `13.6%`, private test **49.20%** (`v6` re-scored: **52.50%**, **Rank 2**).
-- **Submission `28739667` (`ed536971`):** Task-vector SVD rank compression ($r=16, \beta=0.40$) reached **50.20%** private test (`v6` re-scored: **51.80%**, **Rank 3**) and **44.56%** validation (`v1`, **47.03%** under `v2`; HumanEval `40.63%`, BBH `38.89%`).
-- **Submission `9253785d` (`644b699b`, Candidate I, Negative Result):** Under `public-thinking8k-bfcl-ladder500-v2`, Candidate I scored **46.2%** private test / **46.43%** validation (**Rank 17**). While MATH-500 rose to `57.8%` and MMLU-Pro reached `42.9%`, altering raw pretrained weights via Wiener compression and diagonal `norm.weight` coordinate boosts (`ans_eps=0.045`) hurt PIQA (`65.6%`), BFCL single-turn (`56.9%`), and HumanEval (`25.0%`), while the `-26.1%` greedy token reduction vanished under `temp=1.0` sampling (`1.33M` output tokens, `14.2%` truncation). Local evaluation must use multi-seed `temp=1.0` sampling rather than greedy decoding, and compression should operate strictly on task vectors ($\Delta W$) rather than raw pretrained matrices.
+- **Submission `28739667` (`ed536971`):** Task-vector SVD rank compression ($r=16, \beta=0.40$) reached **50.20%** private test (`v6` re-scored: **51.80%**, **Rank 4**) and **44.56%** validation (`v1`, **47.03%** under `v2`; HumanEval `40.63%`, BBH `38.89%`).
+- **Submission `9253785d` (`644b699b`, Candidate I, Negative Result):** Under `public-thinking8k-bfcl-ladder500-v2`, Candidate I scored **46.2%** private test / **46.43%** validation (**Rank 17**). Altering raw pretrained weights via Wiener compression hurt PIQA and BFCL single-turn.
+- **Submission `beaf7f49` (`1c8f7b6a`, Candidate P):** Scored **48.37% Validation (#1 in the World across all 60+ models)** and **50.80% Private Test (Rank 10)**. HumanEval hit **50.0%**, IFEval reached **82.81%**, and GSM8K climbed to **68.75%**. However, analysis of sub-benchmarks revealed that the `0c834b41` parent had `bfcl_multi_turn: 0.0%` due to teacher distillation lacking multi-turn function calling data. Candidate Q addresses this by anchoring strictly on `fb984a19` (where multi-turn tool calling and the Layer 23 graft are intact) and injecting teacher SVD task vectors exclusively into Layers 0–19 MLP.
 
 ## Boundaries
 
